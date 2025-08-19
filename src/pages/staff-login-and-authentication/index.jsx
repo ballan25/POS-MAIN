@@ -6,6 +6,7 @@ import ShiftStatus from './components/ShiftStatus';
 import AdminAnalytics from './components/AdminAnalytics';
 import SessionTimeout from './components/SessionTimeout';
 import Icon from '../../components/AppIcon';
+import { supabase } from '../../supabaseClient';
 
 const StaffLoginAndAuthentication = () => {
   const navigate = useNavigate();
@@ -18,21 +19,6 @@ const StaffLoginAndAuthentication = () => {
   const [showSessionTimeout, setShowSessionTimeout] = useState(false);
   const [sessionTimeRemaining, setSessionTimeRemaining] = useState(300); // 5 minutes
 
-  // Mock credentials for different roles
-  const mockCredentials = {
-    cashier: {
-      email: 'cashier@bobacafe.com',
-      password: 'cashier123',
-      name: 'Sarah Johnson',
-      role: 'cashier'
-    },
-    manager: {
-      email: 'manager@bobacafe.com',
-      password: 'manager123',
-      name: 'Mike Chen',
-      role: 'manager'
-    }
-  };
 
   useEffect(() => {
     // Check for saved login state
@@ -86,24 +72,27 @@ const StaffLoginAndAuthentication = () => {
     setError('');
 
     try {
-      // Simulate API delay
-      await new Promise(resolve => setTimeout(resolve, 1500));
+      const { data, error: authError } = await supabase.auth.signInWithPassword({
+        email: formData.email,
+        password: formData.password
+      });
 
-      // Check credentials based on selected role
-      const validCredentials = mockCredentials?.[selectedRole];
-      
-      if (formData?.email === validCredentials?.email && formData?.password === validCredentials?.password) {
-        const user = {
-          ...validCredentials,
-          loginTime: new Date(),
-          sessionId: `session_${Date.now()}`
-        };
-
-        handleSuccessfulLogin(user, formData?.rememberMe);
-      } else {
+      if (authError || !data.user) {
         setAttemptCount(prev => prev + 1);
         setError('Invalid email or password. Please check your credentials and try again.');
+        return;
       }
+
+      const user = {
+        id: data.user.id,
+        email: data.user.email,
+        name: data.user.user_metadata?.name || data.user.email,
+        role: data.user.user_metadata?.role || selectedRole,
+        loginTime: new Date(),
+        sessionId: data.session?.access_token
+      };
+
+      handleSuccessfulLogin(user, formData?.rememberMe);
     } catch (err) {
       setError('Login failed. Please try again.');
     } finally {

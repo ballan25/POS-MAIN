@@ -9,6 +9,7 @@ import MpesaPaymentForm from './components/MpesaPaymentForm';
 import SplitPaymentForm from './components/SplitPaymentForm';
 import TransactionSummary from './components/TransactionSummary';
 import RefundModal from './components/RefundModal';
+import { supabase } from '../../supabaseClient';
 
 const PaymentProcessingAndCheckout = () => {
   const navigate = useNavigate();
@@ -27,12 +28,8 @@ const PaymentProcessingAndCheckout = () => {
     return 'TXN' + Date.now().toString() + Math.random().toString(36).substr(2, 5).toUpperCase();
   };
 
-  const saveTransaction = (transactionData) => {
+  const saveTransaction = async (transactionData) => {
     try {
-      // Get existing transactions from localStorage
-      const existingTransactions = localStorage.getItem('savedTransactions');
-      const transactions = existingTransactions ? JSON.parse(existingTransactions) : [];
-      
       // Add new transaction
       const newTransaction = {
         id: generateTransactionId(),
@@ -40,12 +37,17 @@ const PaymentProcessingAndCheckout = () => {
         savedAt: new Date().toISOString(),
         status: 'completed'
       };
-      
+
+      // Save to Supabase
+      const { data, error } = await supabase.from('transactions').insert(newTransaction).select().single();
+      if (error) throw error;
+
+      // Save to localStorage for offline access
+      const existingTransactions = localStorage.getItem('savedTransactions');
+      const transactions = existingTransactions ? JSON.parse(existingTransactions) : [];
       transactions.push(newTransaction);
-      
-      // Save back to localStorage
       localStorage.setItem('savedTransactions', JSON.stringify(transactions));
-      
+
       // Also save to daily transactions for reporting
       const today = new Date().toISOString().split('T')[0];
       const dailyKey = `transactions_${today}`;
@@ -53,20 +55,17 @@ const PaymentProcessingAndCheckout = () => {
       const todayTransactions = dailyTransactions ? JSON.parse(dailyTransactions) : [];
       todayTransactions.push(newTransaction);
       localStorage.setItem(dailyKey, JSON.stringify(todayTransactions));
-      
-      console.log('Transaction saved:', newTransaction);
-      return newTransaction;
+
+      console.log('Transaction saved:', data);
+      return data;
     } catch (error) {
       console.error('Error saving transaction:', error);
       return null;
     }
   };
 
-  const saveRefundTransaction = (refundData) => {
+  const saveRefundTransaction = async (refundData) => {
     try {
-      const existingTransactions = localStorage.getItem('savedTransactions');
-      const transactions = existingTransactions ? JSON.parse(existingTransactions) : [];
-      
       const refundTransaction = {
         id: generateTransactionId(),
         type: 'refund',
@@ -78,10 +77,16 @@ const PaymentProcessingAndCheckout = () => {
         timestamp: new Date().toISOString(),
         status: 'completed'
       };
-      
+
+      const { data, error } = await supabase.from('transactions').insert(refundTransaction).select().single();
+      if (error) throw error;
+
+      // Save to localStorage
+      const existingTransactions = localStorage.getItem('savedTransactions');
+      const transactions = existingTransactions ? JSON.parse(existingTransactions) : [];
       transactions.push(refundTransaction);
       localStorage.setItem('savedTransactions', JSON.stringify(transactions));
-      
+
       // Also save to daily transactions
       const today = new Date().toISOString().split('T')[0];
       const dailyKey = `transactions_${today}`;
@@ -89,9 +94,9 @@ const PaymentProcessingAndCheckout = () => {
       const todayTransactions = dailyTransactions ? JSON.parse(dailyTransactions) : [];
       todayTransactions.push(refundTransaction);
       localStorage.setItem(dailyKey, JSON.stringify(todayTransactions));
-      
-      console.log('Refund transaction saved:', refundTransaction);
-      return refundTransaction;
+
+      console.log('Refund transaction saved:', data);
+      return data;
     } catch (error) {
       console.error('Error saving refund transaction:', error);
       return null;
@@ -160,9 +165,9 @@ const PaymentProcessingAndCheckout = () => {
 
   const handlePaymentComplete = (paymentDetails) => {
     setIsProcessing(true);
-    
+
     // Simulate payment processing delay
-    setTimeout(() => {
+    setTimeout(async () => {
       const completePaymentData = {
         ...paymentDetails,
         orderId: orderData?.orderId,
@@ -192,12 +197,12 @@ const PaymentProcessingAndCheckout = () => {
       };
 
       // Save the transaction
-      const savedTxn = saveTransaction(transactionData);
+      const savedTxn = await saveTransaction(transactionData);
       setSavedTransaction(savedTxn);
 
       setCurrentStep('summary');
       setIsProcessing(false);
-      
+
       // Clear the current order from localStorage after successful payment
       localStorage.removeItem('currentOrder');
     }, 1500);
@@ -303,9 +308,9 @@ const PaymentProcessingAndCheckout = () => {
     navigate('/point-of-sale-order-processing');
   };
 
-  const handleRefundComplete = (refundData) => {
+  const handleRefundComplete = async (refundData) => {
     // Save refund transaction
-    const refundTransaction = saveRefundTransaction({
+    const refundTransaction = await saveRefundTransaction({
       ...refundData,
       originalOrderId: orderData?.orderId
     });
